@@ -8,6 +8,7 @@ import androidx.activity.compose.setContent
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -66,6 +67,7 @@ class MainActivity : ComponentActivity() {
         private const val REQUEST_CODE_SAVE_JSON = 2
     }
 
+    lateinit var editID: String
     lateinit var listName: String
     lateinit var resultStr: String
     var allTasks: MutableMap<String, MutableMap<String, String>> = mutableMapOf()
@@ -81,8 +83,13 @@ class MainActivity : ComponentActivity() {
     fun Screen() {
         if (state.value == "home")
             MainButtons()
-        else
+        else if (state.value == "edit")
+            RedactionCard()
+        else{
             ListSheet()
+            state.value = "list"
+        }
+
     }
 
     @OptIn(ExperimentalFoundationApi::class)
@@ -131,12 +138,13 @@ class MainActivity : ComponentActivity() {
                 item {
                     Text(text = listName, fontSize = 40.sp, modifier = Modifier.padding(16.dp))
                 }
-                for (t in allTasks.values) {
+                for (t in allTasks) {
                     item {
                         ListItem(
-                            name = t["name"].toString(),
-                            desc = t["description"].toString(),
-                            checked = t["done"].toString() == "done"
+                            id = t.key,
+                            name = t.value["name"].toString(),
+                            desc = t.value["description"].toString(),
+                            checked = (t.value["status"].toString() == "done")
                         )
                     }
                 }
@@ -160,22 +168,38 @@ class MainActivity : ComponentActivity() {
             ) {
 
                 IconButton(onClick = {
-                    // TODO
-//                    allTasks.put((allTasks.keys.maxOrNull()?:0).toString(), {"name" = "Task", "descriptio" = "...", "status" = "not done"}.toString())
+                    allTasks[allTasks.keys.maxOrNull()+1.toString()] = mutableMapOf(
+                        "name" to "Task",
+                        "description" to "...",
+                        "status" to "not done"
+                    )
+                    state.value = "list2"
                 }) {
-                    Icon(Icons.Filled.AddCircle, contentDescription = "Add task", Modifier.size(70.dp))
+                    Icon(
+                        Icons.Filled.AddCircle,
+                        contentDescription = "Add task",
+                        Modifier.size(70.dp)
+                    )
                 }
             }
         }
     }
 
+    @OptIn(ExperimentalFoundationApi::class)
     @Composable
-    private fun ListItem(name: String, desc: String, checked: Boolean) {
+    private fun ListItem(id: String, name: String, desc: String, checked: Boolean) {
         Card(
             modifier = Modifier
                 .padding(16.dp)
                 .fillMaxWidth()
-                .clickable { Log.d("MyLog", "click") },
+                .combinedClickable(
+                    onClick = { editID = id
+                        state.value = "edit" },
+                    onLongClick = {
+                        allTasks.remove(id)
+                        state.value = "list3"
+                    }
+                ),
             shape = RoundedCornerShape(15.dp),
             elevation = CardDefaults.cardElevation(defaultElevation = 5.dp)
         ) {
@@ -208,10 +232,14 @@ class MainActivity : ComponentActivity() {
                             maxLines = 2
                         )
                     }
-
+                    Log.i("ch", checked.toString());
                     Checkbox(
+
                         checked = checked,
-                        onCheckedChange = {/*TODO*/ },
+                        onCheckedChange = {
+                            allTasks[id]?.set("status", if (it) "done" else "not done")
+                            state.value = "list2"
+                        },
                         Modifier.weight(0.2f),
                     )
                 }
@@ -258,11 +286,15 @@ class MainActivity : ComponentActivity() {
     }
 
     @Composable
-    fun RedactionCard(t1: String, t2: String) {
-        var text1 by remember { mutableStateOf(TextFieldValue(t1)) }
-        var text2 by remember { mutableStateOf(TextFieldValue(t2)) }
+    fun RedactionCard() {
+        var text1 by remember { mutableStateOf(TextFieldValue("")) }
+        var text2 by remember { mutableStateOf(TextFieldValue("")) }
 
-        Column {
+        Column(
+            modifier = Modifier.fillMaxSize(),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center) {
+            Text(text = "Enter new name of task and description", fontSize = 40.sp)
             TextField(
                 value = text1,
                 onValueChange = { text1 = it },
@@ -275,10 +307,15 @@ class MainActivity : ComponentActivity() {
             )
 
             Row {
-                Button(onClick = { /* Handle button 1 click */ }) {
-                    Text("Delete")
+                Button(onClick = { state.value = "list" }) {
+                    Text("Cansel")
                 }
-                Button(onClick = { /* Handle button 2 click */ }) {
+                Button(onClick = {
+                    allTasks.remove(editID)
+                    allTasks[editID.toString()] = mutableMapOf("name" to text1.text, "description" to text2.text, "status" to "not done")
+                    // TODO
+                    state.value = "list"
+                }) {
                     Text("Apply")
                 }
             }
