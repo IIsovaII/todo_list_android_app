@@ -23,13 +23,16 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.AddCircle
 import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Checkbox
+import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
@@ -47,30 +50,95 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import org.json.JSONArray
-import org.json.JSONObject
-import java.io.BufferedReader
-import java.io.File
-import java.io.InputStreamReader
-import java.io.OutputStreamWriter
+import com.example.myapplication.retrofitSingleton.Companion.apiInterface
+import retrofit2.Call
+import retrofit2.Callback
+import retrofit2.Response
+import java.util.UUID
 
 var stickyFooterHeight = 70
 
+
 class MainActivity : ComponentActivity() {
-    private var state = mutableStateOf("home");
+    private var state = mutableStateOf("home")
+
+    private var allTasks = mutableStateOf(listOf<TaskItem>())
+
+    var retrofit = retrofitSingleton.getApiInterface()
+
+    fun getTasks() {
+        apiInterface.getList().enqueue(object : Callback<List<TaskItem>> {
+            override fun onResponse(
+                call: Call<List<TaskItem>>,
+                response: Response<List<TaskItem>>
+            ) {
+                if (response.body() == null) {
+                    allTasks.value = listOf<TaskItem>()
+                } else
+                    allTasks.value = response.body()!!.toList()
+            }
+
+            override fun onFailure(p0: Call<List<TaskItem>>, p1: Throwable) {
+            }
+        })
+    }
+
+    private fun editTask(id: String, ticket: TaskItem) {
+        val call = apiInterface.changeTask(id, ticket)
+        call.enqueue(object : Callback<Boolean> {
+            override fun onResponse(p0: Call<Boolean>, p1: Response<Boolean>) {
+                state.value = "list2"
+            }
+
+            override fun onFailure(p0: Call<Boolean>, p1: Throwable) {
+                state.value = "list2"
+            }
+
+        })
+    }
+
+    private fun addTask() {
+        val newTicket = TaskItem(
+            id = UUID.randomUUID().toString(),
+            name = "new task",
+            isComplete = false
+        )
+
+        apiInterface
+            .loadTask(newTicket)
+            .enqueue(object : Callback<Boolean> {
+                override fun onResponse(p0: Call<Boolean>, p1: Response<Boolean>) {
+                    state.value = "list2"
+                }
+
+                override fun onFailure(p0: Call<Boolean>, p1: Throwable) {
+                }
+            })
+    }
+
+    private fun deleteTask(id: String) {
+        val call = apiInterface.deleteTask(id)
+        call.enqueue(object : Callback<Boolean> {
+            override fun onResponse(p0: Call<Boolean>, p1: Response<Boolean>) {
+                state.value = "list2"
+            }
+
+            override fun onFailure(p0: Call<Boolean>, p1: Throwable) {
+
+            }
+
+        })
+    }
 
     companion object {
         private const val REQUEST_CODE_LOAD_JSON = 1
         private const val REQUEST_CODE_SAVE_JSON = 2
     }
 
-    lateinit var editID: String
-    lateinit var listName: String
+    private lateinit var editT: TaskItem
     lateinit var resultStr: String
-    var allTasks: MutableMap<String, MutableMap<String, String>> = mutableMapOf()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -81,11 +149,10 @@ class MainActivity : ComponentActivity() {
 
     @Composable
     fun Screen() {
-        if (state.value == "home")
-            MainButtons()
-        else if (state.value == "edit")
+        getTasks()
+        if (state.value == "edit")
             RedactionCard()
-        else{
+        else {
             ListSheet()
             state.value = "list"
         }
@@ -95,6 +162,7 @@ class MainActivity : ComponentActivity() {
     @OptIn(ExperimentalFoundationApi::class)
     @Composable
     private fun ListSheet() {
+
         Box(
             modifier = Modifier.fillMaxSize()
         ) {
@@ -108,44 +176,21 @@ class MainActivity : ComponentActivity() {
                     ) {
                         IconButton(onClick = {
                             state.value = "home"
-                            allTasks = mutableMapOf()
+                            allTasks.value = listOf()
                         }) {
-                            Icon(Icons.Filled.ArrowBack, contentDescription = "Back")
-                        }
-                        IconButton(onClick = {
-                            // TODO
-                            val resJson = JSONObject()
-                            resJson.put("name", listName)
-                            val tasksJSON = JSONArray(allTasks.values)
-                            Log.i("tasks", tasksJSON.toString())
-                            resJson.put("tasks", tasksJSON)
-                            resultStr = resJson.toString()
-                            Log.i("file to save", resultStr)
-
-                            val saveFileIntent = Intent(Intent.ACTION_CREATE_DOCUMENT).apply {
-                                addCategory(Intent.CATEGORY_OPENABLE)
-                                type = "file/json"
-                                putExtra(Intent.EXTRA_TITLE, "newBoard.json")
-                            }
-                            startActivityForResult(saveFileIntent, REQUEST_CODE_SAVE_JSON)
-                        }) {
-                            Icon(Icons.Filled.Share, contentDescription = "Save")
+                            Icon(Icons.Filled.Refresh, contentDescription = "Back")
                         }
                     }
                 }
 
-
-                item {
-                    Text(text = listName, fontSize = 40.sp, modifier = Modifier.padding(16.dp))
-                }
-                for (t in allTasks) {
+                for (t in allTasks.value) {
                     item {
                         ListItem(
-                            id = t.key,
-                            name = t.value["name"].toString(),
-                            desc = t.value["description"].toString(),
-                            checked = (t.value["status"].toString() == "done")
+                            id = t.id,
+                            name = t.name,
+                            checked = (t.isComplete)
                         )
+                        Log.i("TAG", "ListSheet: ${t.isComplete}")
                     }
                 }
                 item {
@@ -166,20 +211,8 @@ class MainActivity : ComponentActivity() {
                         stickyFooterHeight = it.height
                     }
             ) {
-
-                IconButton(onClick = {
-                    allTasks[allTasks.keys.maxOrNull()+1.toString()] = mutableMapOf(
-                        "name" to "Task",
-                        "description" to "...",
-                        "status" to "not done"
-                    )
-                    state.value = "list2"
-                }) {
-                    Icon(
-                        Icons.Filled.AddCircle,
-                        contentDescription = "Add task",
-                        Modifier.size(70.dp)
-                    )
+                FloatingActionButton(onClick = { addTask() }) {
+                    Icon(Icons.Default.Add, contentDescription = "Add")
                 }
             }
         }
@@ -187,17 +220,31 @@ class MainActivity : ComponentActivity() {
 
     @OptIn(ExperimentalFoundationApi::class)
     @Composable
-    private fun ListItem(id: String, name: String, desc: String, checked: Boolean) {
+    private fun ListItem(id: String, name: String, checked: Boolean) {
+        fun check(id: String) {
+            val call = apiInterface.changeStatus(id)
+            call.enqueue(object : Callback<Boolean> {
+                override fun onResponse(p0: Call<Boolean>, p1: Response<Boolean>) {
+                }
+
+                override fun onFailure(p0: Call<Boolean>, p1: Throwable) {
+                }
+
+            })
+        }
+
+
         Card(
             modifier = Modifier
                 .padding(16.dp)
                 .fillMaxWidth()
                 .combinedClickable(
-                    onClick = { editID = id
-                        state.value = "edit" },
+                    onClick = {
+                        editT = TaskItem(id, name, checked)
+                        state.value = "edit"
+                    },
                     onLongClick = {
-                        allTasks.remove(id)
-                        state.value = "list3"
+                        deleteTask(id)
                     }
                 ),
             shape = RoundedCornerShape(15.dp),
@@ -225,19 +272,12 @@ class MainActivity : ComponentActivity() {
                             overflow = TextOverflow.Ellipsis,
                             maxLines = 1
                         )
-                        Text(
-                            text = desc,
-                            fontSize = 12.sp,
-                            overflow = TextOverflow.Ellipsis,
-                            maxLines = 2
-                        )
                     }
-                    Log.i("ch", checked.toString());
                     Checkbox(
 
                         checked = checked,
                         onCheckedChange = {
-                            allTasks[id]?.set("status", if (it) "done" else "not done")
+                            check(id)
                             state.value = "list2"
                         },
                         Modifier.weight(0.2f),
@@ -249,61 +289,19 @@ class MainActivity : ComponentActivity() {
 
 
     @Composable
-    fun MainButtons() {
-        Column(
-            modifier = Modifier
-                .background(Color.White)
-                .fillMaxSize(),
-            verticalArrangement = Arrangement.SpaceEvenly,
-            horizontalAlignment = Alignment.CenterHorizontally,
-        ) {
-            Text(text = "TO-DO list", fontSize = 60.sp)
-
-            Column(
-                horizontalAlignment = Alignment.CenterHorizontally,
-                modifier = Modifier.height(200.dp),
-                verticalArrangement = Arrangement.SpaceEvenly
-            ) {
-                Button(onClick = {
-                    val getFileIntent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
-                        addCategory(Intent.CATEGORY_OPENABLE)
-                        type = "application/json"
-                    }
-                    startActivityForResult(getFileIntent, REQUEST_CODE_LOAD_JSON)
-                }) {
-                    Text(text = "Load", fontSize = 30.sp)
-                }
-                Button(onClick = {
-                    listName = "New list"
-                    allTasks = mutableMapOf()
-                    state.value = "list"
-                }) {
-                    Text(text = "New", fontSize = 30.sp)
-                }
-            }
-
-        }
-    }
-
-    @Composable
     fun RedactionCard() {
         var text1 by remember { mutableStateOf(TextFieldValue("")) }
-        var text2 by remember { mutableStateOf(TextFieldValue("")) }
 
         Column(
             modifier = Modifier.fillMaxSize(),
             horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center) {
-            Text(text = "Enter new name of task and description", fontSize = 40.sp)
+            verticalArrangement = Arrangement.Center
+        ) {
+            Text(text = "Enter new name of task", fontSize = 40.sp)
             TextField(
                 value = text1,
                 onValueChange = { text1 = it },
                 label = { Text("Name") }
-            )
-            TextField(
-                value = text2,
-                onValueChange = { text2 = it },
-                label = { Text("Description") }
             )
 
             Row {
@@ -311,9 +309,11 @@ class MainActivity : ComponentActivity() {
                     Text("Cansel")
                 }
                 Button(onClick = {
-                    allTasks.remove(editID)
-                    allTasks[editID.toString()] = mutableMapOf("name" to text1.text, "description" to text2.text, "status" to "not done")
-                    // TODO
+                    editTask(
+                        editT.id,
+                        TaskItem(id = editT.id, name = text1.text, isComplete = editT.isComplete)
+                    )
+
                     state.value = "list"
                 }) {
                     Text("Apply")
@@ -322,50 +322,6 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-
-    public override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
-        super.onActivityResult(requestCode, resultCode, data)
-        if (requestCode == REQUEST_CODE_LOAD_JSON && resultCode == RESULT_OK) {
-            val uri = data?.data
-            if (uri != null) {
-                val file = File(uri.path!!)
-
-                val stringBuilder = StringBuilder()
-                contentResolver.openInputStream(uri).use { inputStream ->
-                    BufferedReader(InputStreamReader(inputStream)).use { reader ->
-                        var line: String? = reader.readLine()
-                        while (line != null) {
-                            stringBuilder.append(line)
-                            line = reader.readLine()
-                        }
-                    }
-                }
-
-                val jsonObject = JSONObject(stringBuilder.toString())
-                listName = jsonObject.get("name") as String
-                Log.i("name", listName)
-                val tasks: JSONArray = jsonObject.getJSONArray("tasks")
-
-                for (i in 0..<tasks.length()) {
-                    allTasks[i.toString()] = mutableMapOf(
-                        "name" to (tasks.get(i) as JSONObject).get("name") as String,
-                        "description" to (tasks.get(i) as JSONObject).get("description") as String,
-                        "status" to (tasks.get(i) as JSONObject).get("status") as String
-                    )
-                }
-
-                Log.i("tag", allTasks.toString())
-                state.value = "list"
-            }
-        } else if (requestCode == REQUEST_CODE_SAVE_JSON && resultCode == RESULT_OK) {
-            val uri = data?.data
-            if (uri != null) {
-                val outputStream = OutputStreamWriter(contentResolver.openOutputStream(uri))
-                outputStream.write(resultStr)
-                outputStream.close()
-            }
-        }
-    }
 }
 
 
